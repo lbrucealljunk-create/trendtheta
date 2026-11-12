@@ -1,0 +1,2255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPY Trend &amp; Greeks Analyzer — TrendTheta</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Header & 5-Minute Check Controls -->
+    <header class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            Step 1 Prototype
+          </span>
+          <span class="text-xs text-slate-400">Nov 11, 2026 Baseline</span>
+        </div>
+        <h1 id="appMainTitle" class="text-xl sm:text-2xl font-bold text-white mt-1.5">
+          TrendTheta · SPY Analyzer
+        </h1>
+        <p class="text-sm text-slate-400 mt-0.5">
+          Combines options Greeks with current market events to estimate 1W, 1M, 3M, and 6M trends.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 bg-slate-950/70 border border-slate-800 rounded-xl p-3">
+        <div class="px-2">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400">Next 5m Check</div>
+          <div id="countdownDisplay" class="text-lg font-mono font-bold text-sky-400">05:00</div>
+        </div>
+        <div class="h-8 w-px bg-slate-800 hidden sm:block"></div>
+        <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-300 cursor-pointer select-none px-1">
+          <input id="autoCheckToggle" type="checkbox" checked class="w-4 h-4 rounded accent-sky-500 cursor-pointer" />
+          Auto-check
+        </label>
+        <button id="checkNowBtn" type="button"
+          class="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 font-semibold text-sm transition cursor-pointer">
+          Check Now
+        </button>
+      </div>
+    </header>
+
+    <!-- Stock / ETF Symbol Search Bar -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div class="flex-1 space-y-1.5">
+        <form id="symbolSearchForm" class="flex flex-wrap items-center gap-2 relative">
+          <div class="relative flex-1 min-w-[220px]">
+            <input id="symbolSearchInput" type="text" autocomplete="off" maxlength="40"
+              placeholder="Type stock/ETF name or symbol (e.g. Apple, S&amp;P, NVDA, QQQ)..."
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500" />
+            <ul id="symbolSuggestions"
+              class="hidden absolute left-0 right-0 top-full mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto divide-y divide-slate-800"></ul>
+          </div>
+          <button type="submit"
+            class="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold text-sm transition cursor-pointer">
+            Load Symbol
+          </button>
+        </form>
+        <div id="symbolSearchError" class="hidden text-xs text-rose-400 px-1"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5 text-xs">
+        <span class="text-slate-400 mr-1">Quick pick:</span>
+        <button type="button" data-quick-symbol="SPY" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">SPY</button>
+        <button type="button" data-quick-symbol="QQQ" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">QQQ</button>
+        <button type="button" data-quick-symbol="NVDA" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">NVDA</button>
+        <button type="button" data-quick-symbol="MSFT" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer">MSFT</button>
+        <button id="toggleApiPanelBtn" type="button" class="ml-2 px-2.5 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/30 font-semibold cursor-pointer">
+          Live API Key
+        </button>
+      </div>
+    </section>
+
+    <!-- Step 2: Optional Live Finnhub API & Persistence Panel -->
+    <section id="liveApiPanel" class="hidden bg-slate-900 border border-violet-500/30 rounded-2xl p-4 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="text-sm font-semibold text-white">Live Market &amp; News Connector (Optional Finnhub API)</h2>
+          <p class="text-xs text-slate-400">Paste a free Finnhub API key to pull real-time quotes &amp; news on every 5-minute check and symbol search. Stored only in your browser.</p>
+        </div>
+        <span id="liveModeBadge" class="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800 text-slate-300">Demo / Snapshot Mode</span>
+      </div>
+      <form id="apiKeyForm" class="flex flex-wrap items-center gap-2">
+        <input id="finnhubKeyInput" type="password" placeholder="Enter Finnhub API Key (optional)..."
+          class="flex-1 min-w-[220px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500" />
+        <button type="submit"
+          class="px-4 py-2 rounded-xl bg-violet-500 hover:bg-violet-400 text-slate-950 font-semibold text-sm transition cursor-pointer">
+          Save &amp; Enable Live
+        </button>
+        <button id="clearApiKeyBtn" type="button"
+          class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition cursor-pointer">
+          Disconnect
+        </button>
+      </form>
+      <div id="apiStatusMsg" class="hidden text-xs px-3 py-2 rounded-lg"></div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl p-1.5 w-fit">
+      <button id="tabAnalyzerBtn" type="button"
+        class="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-slate-950 transition cursor-pointer">
+        Trend &amp; News Analyzer
+      </button>
+      <button id="tabSimulatorBtn" type="button"
+        class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition cursor-pointer">
+        Call / Put Simulator
+      </button>
+    </nav>
+
+    <!-- Market Snapshot Strip -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div id="assetPriceLabel" class="text-xs text-slate-400">SPY Price</div>
+        <div class="flex items-baseline gap-2 mt-1">
+          <span id="spyPriceDisplay" class="text-2xl font-bold text-white">$761.32</span>
+          <span id="spyChangeDisplay" class="text-xs font-semibold text-emerald-400">+1.52%</span>
+        </div>
+        <div id="assetSourceLine" class="text-[11px] text-slate-500 mt-1">
+          Prev Close: $749.92 (<a href="https://www.kraken.com/stocks/spy" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-300">Kraken</a>)
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div id="assetInfoLabel" class="text-xs text-slate-400">SPDR S&amp;P 500 ETF Trust</div>
+        <div class="flex items-baseline gap-2 mt-1">
+          <span id="assetRangeDisplay" class="text-lg font-bold text-white">$629.28–$781.62</span>
+        </div>
+        <div id="assetBadgeLine" class="text-[11px] text-slate-500 mt-1">
+          52-Week Range · <a href="https://www.morningstar.com/news/dow-jones/202611118049/sp-500-rises-131-to-761938-data-talk" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-300">SPX 7,619.38</a>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-400">Implied Volatility / VIX</div>
+        <div class="flex items-baseline gap-2 mt-1">
+          <span id="vixDisplay" class="text-2xl font-bold text-white">19.46%</span>
+          <span id="volRegimeLabel" class="text-xs font-medium text-amber-400">Moderate</span>
+        </div>
+        <div class="text-[11px] text-slate-500 mt-1">
+          Market VIX baseline (<a href="https://www.home.saxo/content/articles/macro/market-quick-take---us-treasury-yields-rip-higher---11-november-2026-11112026" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-300">Saxo Bank</a>)
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-400">Composite Trend Signal</div>
+        <div class="flex items-baseline gap-2 mt-1">
+          <span id="overallSignalBadge" class="text-xl font-bold text-emerald-400">Uptrend</span>
+          <span id="overallScoreDisplay" class="text-xs font-mono text-slate-300">+14 / 100</span>
+        </div>
+        <div id="lastCheckedDisplay" class="text-[11px] text-slate-500 mt-1">Last checked: Just now</div>
+      </div>
+    </section>
+
+    <!-- TAB 1: Trend & News Analyzer -->
+    <div id="analyzerView" class="space-y-6">
+      <!-- 1W, 1M, 3M, 6M Recommendations -->
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold text-white">Horizon Recommendations</h2>
+          <span class="text-xs text-slate-400">Auto-updates whenever Greeks or News change</span>
+        </div>
+        <div id="horizonGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- Recommended Entry & Exit Points (1D, 1W, 1M, 3M) -->
+      <section>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="text-base font-semibold text-white">Recommended Entry &amp; Exit Points</h2>
+            <p class="text-xs text-slate-400">Calculated from current price, implied volatility, Greeks, technicals, and news sentiment.</p>
+          </div>
+          <span class="text-xs text-slate-400">Click &ldquo;Trade Setup&rdquo; to load in Simulator</span>
+        </div>
+        <div id="entryExitGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- Main Interactive Workspace: Greeks + Chart | News & Events -->
+      <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left: Options Greeks + Horizon Score Chart -->
+        <div class="lg:col-span-6 space-y-6">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-base font-semibold text-white">Options Greeks Inputs</h2>
+                <p class="text-xs text-slate-400">Adjust sliders to see how option positioning shifts the trend.</p>
+              </div>
+              <button id="resetGreeksBtn" type="button"
+                class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer">
+                Reset
+              </button>
+            </div>
+
+            <div class="space-y-4">
+              <!-- Delta -->
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+                <div class="flex justify-between text-sm">
+                  <label for="deltaSlider" class="font-medium text-slate-200">Delta (&Delta;) — Directional Bias</label>
+                  <span id="deltaVal" class="font-mono font-semibold text-sky-400">0.58</span>
+                </div>
+                <input id="deltaSlider" type="range" min="0.10" max="0.90" step="0.01" value="0.58"
+                  class="w-full mt-2 accent-sky-500 cursor-pointer" />
+                <p class="text-[11px] text-slate-400 mt-1">Above 0.50 signals bullish call/price momentum; below 0.50 leans bearish.</p>
+              </div>
+
+              <!-- Gamma -->
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+                <div class="flex justify-between text-sm">
+                  <label for="gammaSlider" class="font-medium text-slate-200">Gamma (&Gamma;) — Trend Acceleration</label>
+                  <span id="gammaVal" class="font-mono font-semibold text-sky-400">0.035</span>
+                </div>
+                <input id="gammaSlider" type="range" min="0.005" max="0.080" step="0.005" value="0.035"
+                  class="w-full mt-2 accent-sky-500 cursor-pointer" />
+                <p class="text-[11px] text-slate-400 mt-1">Higher Gamma amplifies short-term (1W–1M) directional moves.</p>
+              </div>
+
+              <!-- Theta -->
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+                <div class="flex justify-between text-sm">
+                  <label for="thetaSlider" class="font-medium text-slate-200">Theta (&Theta;) — Time Decay Drag</label>
+                  <span id="thetaVal" class="font-mono font-semibold text-amber-400">-0.14</span>
+                </div>
+                <input id="thetaSlider" type="range" min="-0.40" max="-0.02" step="0.01" value="-0.14"
+                  class="w-full mt-2 accent-amber-500 cursor-pointer" />
+                <p class="text-[11px] text-slate-400 mt-1">Steeper negative Theta penalizes slow or sideways recoveries.</p>
+              </div>
+
+              <!-- Vega -->
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+                <div class="flex justify-between text-sm">
+                  <label for="vegaSlider" class="font-medium text-slate-200">Vega (&nu;) — Volatility Sensitivity</label>
+                  <span id="vegaVal" class="font-mono font-semibold text-violet-400">0.22</span>
+                </div>
+                <input id="vegaSlider" type="range" min="0.05" max="0.50" step="0.01" value="0.22"
+                  class="w-full mt-2 accent-violet-500 cursor-pointer" />
+                <p class="text-[11px] text-slate-400 mt-1">High Vega increases sensitivity to macro/CPI shocks over 3M–6M.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-base font-semibold text-white">Trend Score by Timeframe</h2>
+              <span class="text-xs text-slate-400">Range: -100 to +100</span>
+            </div>
+            <div class="relative h-56">
+              <canvas id="trendChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Step 3: Technical Indicators Card -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-base font-semibold text-white">Technical Indicators</h2>
+                <p class="text-xs text-slate-400">Combined with Greeks &amp; News in the 1W–6M trend model.</p>
+              </div>
+              <span id="techSignalBadge" class="text-xs font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                Bullish (+8)
+              </span>
+            </div>
+            <div class="grid grid-cols-3 gap-3 text-xs">
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <div class="text-slate-400">RSI (14)</div>
+                <div id="techRsiDisplay" class="text-base font-mono font-bold text-sky-400 mt-0.5">56.4</div>
+                <div id="techRsiLabel" class="text-[11px] text-slate-400 mt-0.5">Healthy Momentum</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <div class="text-slate-400">vs 50-Day MA</div>
+                <div id="techMa50Display" class="text-base font-mono font-bold text-emerald-400 mt-0.5">+1.2%</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Short-Term Trend</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <div class="text-slate-400">vs 200-Day MA</div>
+                <div id="techMa200Display" class="text-base font-mono font-bold text-emerald-400 mt-0.5">+4.8%</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Long-Term Trend</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: News & Current Events + Check Log -->
+        <div class="lg:col-span-6 space-y-6">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-base font-semibold text-white">Relevant News &amp; Current Events</h2>
+                <p class="text-xs text-slate-400">Add a headline below to test how breaking news shifts the outlook.</p>
+              </div>
+              <span id="newsScoreBadge" class="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800 text-slate-200">
+                News Net: +14
+              </span>
+            </div>
+
+            <!-- Add Event Form -->
+            <form id="addNewsForm" class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2.5">
+              <div class="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Auto-Sentiment Analyzer</span>
+                <span id="autoSentimentHint" class="font-mono text-sky-400">Type a headline to auto-score</span>
+              </div>
+              <input id="newsHeadlineInput" type="text" required placeholder="e.g., Fed signals pause on December rate hike..."
+                class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500" />
+              <div class="flex flex-wrap gap-2">
+                <select id="newsSentimentInput"
+                  class="flex-1 min-w-[120px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-sky-500">
+                  <option value="bullish">Bullish (Uptrend)</option>
+                  <option value="bearish">Bearish (Downtrend)</option>
+                  <option value="neutral">Neutral</option>
+                </select>
+                <select id="newsWeightInput"
+                  class="flex-1 min-w-[120px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-sky-500">
+                  <option value="10">Low Impact (10)</option>
+                  <option value="18" selected>Medium Impact (18)</option>
+                  <option value="28">High Impact (28)</option>
+                </select>
+                <button type="submit"
+                  class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-sm transition cursor-pointer">
+                  Add Event
+                </button>
+              </div>
+            </form>
+
+            <!-- News List -->
+            <ul id="newsList" class="space-y-2.5 max-h-72 overflow-y-auto pr-1"></ul>
+          </div>
+
+          <!-- 5-Minute Check History Log -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-base font-semibold text-white">5-Minute Check Log</h2>
+              <span class="text-xs text-slate-400">Most recent first</span>
+            </div>
+            <ul id="checkLogList" class="space-y-2 max-h-48 overflow-y-auto text-xs"></ul>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 2: Robinhood-Style Call / Put Option Simulator -->
+    <div id="simulatorView" class="hidden space-y-6">
+      <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left 7 Cols: Option Chain + Payoff Chart -->
+        <div class="lg:col-span-7 space-y-6">
+
+          <!-- Controls Bar: Buy/Sell, Call/Put, Expiration -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button id="simBuyBtn" type="button"
+                  class="px-4 py-1.5 rounded-lg text-sm font-semibold bg-emerald-500 text-slate-950 transition cursor-pointer">
+                  Buy
+                </button>
+                <button id="simSellBtn" type="button"
+                  class="px-4 py-1.5 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition cursor-pointer">
+                  Sell
+                </button>
+              </div>
+
+              <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button id="simCallBtn" type="button"
+                  class="px-4 py-1.5 rounded-lg text-sm font-semibold bg-sky-500 text-slate-950 transition cursor-pointer">
+                  Call
+                </button>
+                <button id="simPutBtn" type="button"
+                  class="px-4 py-1.5 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition cursor-pointer">
+                  Put
+                </button>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <label for="simStrategySelect" class="text-xs text-slate-400">Strategy:</label>
+                <select id="simStrategySelect"
+                  class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-sm text-sky-300 font-medium focus:outline-none focus:border-sky-500">
+                  <option value="single" selected>Single Leg (Call / Put)</option>
+                  <option value="bull_call_spread">Bull Call Spread</option>
+                  <option value="bear_put_spread">Bear Put Spread</option>
+                  <option value="covered_call">Covered Call (100 sh + Call)</option>
+                  <option value="iron_condor">Iron Condor (4-Leg)</option>
+                </select>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <label for="simExpirySelect" class="text-xs text-slate-400">Expiration:</label>
+                <select id="simExpirySelect"
+                  class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-sky-500">
+                  <option value="7">Nov 18, 2026 (7 DTE)</option>
+                  <option value="30" selected>Dec 11, 2026 (30 DTE)</option>
+                  <option value="65">Jan 15, 2027 (65 DTE)</option>
+                  <option value="100">Feb 19, 2027 (100 DTE)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Option Chain Table -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <h2 id="chainTitle" class="text-sm font-semibold text-white">SPY Option Chain (Select a Strike)</h2>
+                <span class="text-xs text-slate-400">1 contract = 100 shares</span>
+              </div>
+              <div class="overflow-x-auto border border-slate-800 rounded-xl">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider">
+                    <tr>
+                      <th class="px-3 py-2.5">Strike</th>
+                      <th class="px-3 py-2.5">Bid</th>
+                      <th class="px-3 py-2.5">Ask</th>
+                      <th class="px-3 py-2.5">Mark</th>
+                      <th class="px-3 py-2.5">IV</th>
+                      <th class="px-3 py-2.5">Delta</th>
+                      <th class="px-3 py-2.5">Chance Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody id="optionChainBody" class="divide-y divide-slate-800/80 bg-slate-900"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Payoff Diagram at Expiration -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h2 class="text-base font-semibold text-white">Profit / Loss at Expiration</h2>
+                <p id="payoffSubtitle" class="text-xs text-slate-400">Projected P&amp;L across SPY prices at expiration</p>
+              </div>
+              <span id="payoffBreakevenBadge" class="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800 text-sky-300">
+                Breakeven: $0.00
+              </span>
+            </div>
+            <div class="relative h-64">
+              <canvas id="payoffChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 5 Cols: Robinhood-Style Order Ticket + Contract Greeks + Paper Positions -->
+        <div class="lg:col-span-5 space-y-6">
+
+          <!-- Order Ticket -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex items-start justify-between gap-2 border-b border-slate-800 pb-3">
+              <div>
+                <div class="text-xs text-slate-400">Selected Contract</div>
+                <h2 id="ticketContractTitle" class="text-lg font-bold text-white mt-0.5">
+                  Buy SPY $765 Call
+                </h2>
+                <div id="ticketExpiryLabel" class="text-xs text-slate-400">Exp: Dec 11, 2026 (30 DTE)</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-slate-400">Mark Price</div>
+                <div id="ticketMarkPrice" class="text-lg font-mono font-bold text-emerald-400">$14.20</div>
+                <div id="ticketBidAsk" class="text-[11px] text-slate-400 font-mono">Bid $14.05 · Ask $14.35</div>
+              </div>
+            </div>
+
+            <!-- Contract Key Stats (Robinhood style) -->
+            <div class="grid grid-cols-2 gap-2.5 text-xs">
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Breakeven Price</div>
+                <div id="ticketBreakeven" class="font-mono font-semibold text-white mt-0.5">$779.20</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Chance of Profit</div>
+                <div id="ticketChanceProfit" class="font-mono font-semibold text-sky-400 mt-0.5">44.2%</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Max Profit</div>
+                <div id="ticketMaxProfit" class="font-mono font-semibold text-emerald-400 mt-0.5">Unlimited</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Max Loss</div>
+                <div id="ticketMaxLoss" class="font-mono font-semibold text-rose-400 mt-0.5">$1,420.00</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Implied Volatility</div>
+                <div id="ticketIV" class="font-mono font-semibold text-slate-200 mt-0.5">19.5%</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Volume / Open Int.</div>
+                <div id="ticketVolOI" class="font-mono font-semibold text-slate-200 mt-0.5">4,210 / 18,450</div>
+              </div>
+            </div>
+
+            <!-- Contract Greeks -->
+            <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+              <div class="text-xs font-semibold text-slate-300 mb-2">Contract Greeks (Per Share)</div>
+              <div class="grid grid-cols-5 gap-2 text-center text-xs">
+                <div>
+                  <div class="text-[10px] text-slate-400">Delta</div>
+                  <div id="greekDelta" class="font-mono font-semibold text-sky-400">0.49</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-400">Gamma</div>
+                  <div id="greekGamma" class="font-mono font-semibold text-sky-300">0.009</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-400">Theta</div>
+                  <div id="greekTheta" class="font-mono font-semibold text-amber-400">-0.28</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-400">Vega</div>
+                  <div id="greekVega" class="font-mono font-semibold text-violet-400">0.87</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-400">Rho</div>
+                  <div id="greekRho" class="font-mono font-semibold text-slate-300">0.30</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Order Inputs -->
+            <form id="simOrderForm" class="space-y-3 pt-1">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="simOrderType" class="block text-xs text-slate-400 mb-1">Order Type</label>
+                  <select id="simOrderType"
+                    class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-sky-500">
+                    <option value="limit" selected>Limit Order</option>
+                    <option value="market">Market Order</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="simContractsInput" class="block text-xs text-slate-400 mb-1">Contracts</label>
+                  <input id="simContractsInput" type="number" min="1" max="50" value="1"
+                    class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-mono focus:outline-none focus:border-sky-500" />
+                </div>
+              </div>
+
+              <div id="limitPriceRow">
+                <label for="simLimitPriceInput" class="block text-xs text-slate-400 mb-1">Limit Price (per share)</label>
+                <input id="simLimitPriceInput" type="number" step="0.05" min="0.05" value="14.20"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-mono focus:outline-none focus:border-sky-500" />
+              </div>
+
+              <div class="flex items-center justify-between text-sm bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2.5">
+                <span id="ticketCostLabel" class="text-slate-300">Estimated Cost</span>
+                <span id="ticketTotalCost" class="font-mono font-bold text-white">$1,420.00</span>
+              </div>
+
+              <div id="simOrderFeedback" class="hidden text-xs px-3 py-2 rounded-lg"></div>
+
+              <button id="submitSimOrderBtn" type="submit"
+                class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-bold text-sm transition cursor-pointer">
+                Submit Simulated Buy Order
+              </button>
+            </form>
+          </div>
+
+          <!-- Paper Account & Simulated Positions -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-base font-semibold text-white">Paper Account</h2>
+                <div class="text-xs text-slate-400">
+                  Buying Power: <span id="paperBuyingPower" class="font-mono font-semibold text-emerald-400">$25,000.00</span>
+                </div>
+              </div>
+              <button id="resetPaperBtn" type="button"
+                class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer">
+                Reset Account
+              </button>
+            </div>
+            <ul id="simPositionsList" class="space-y-2 max-h-52 overflow-y-auto text-xs"></ul>
+          </div>
+
+          <!-- Selected Position Trending History & Live P&L -->
+          <div id="positionTrendCard" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-xs text-slate-400">Position Trend History</div>
+                <h3 id="posTrendTitle" class="text-base font-bold text-white mt-0.5">—</h3>
+              </div>
+              <span id="posTrendPct" class="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800 text-slate-200">0.00%</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2.5 text-xs">
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Entry Value</div>
+                <div id="posTrendEntryVal" class="font-mono font-semibold text-slate-200 mt-0.5">$0.00</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Current Value</div>
+                <div id="posTrendCurrentVal" class="font-mono font-semibold text-white mt-0.5">$0.00</div>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+                <div class="text-slate-400">Current P&amp;L</div>
+                <div id="posTrendPnl" class="font-mono font-bold text-emerald-400 mt-0.5">$0.00</div>
+              </div>
+            </div>
+            <div class="relative h-52">
+              <canvas id="positionTrendChart"></canvas>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+    <!-- Educational Footer -->
+    <footer class="text-xs text-slate-500 text-center pb-4">
+      Educational Step 1 prototype using Nov 11, 2026 market snapshot data and Black-Scholes option modeling. Not financial advice.
+    </footer>
+  </div>
+
+  <script>
+    // --- Initial Grounded State (Nov 11, 2026) ---
+    const TICKER_CATALOG = {
+      SPY: {
+        symbol: 'SPY',
+        name: 'SPDR S&P 500 ETF Trust',
+        price: 761.32,
+        prevClose: 749.92,
+        range52w: '$629.28–$781.62',
+        vix: 19.46,
+        sourceName: 'Kraken',
+        sourceUrl: 'https://www.kraken.com/stocks/spy',
+        greeks: { delta: 0.58, gamma: 0.035, theta: -0.14, vega: 0.22 },
+        news: [
+          {
+            id: 1,
+            title: 'AI stocks rebound lifts S&P 500 +1.31% to 7,619.38',
+            sentiment: 'bullish',
+            weight: 18,
+            source: 'ITVX',
+            url: 'https://www.itv.com/news/2026-11-11/a-rebound-in-ai-stocks-lifts-the-us-market-as-the-sp-500-climbs'
+          },
+          {
+            id: 2,
+            title: 'Hot Oct CPI (0.4% MoM) & hawkish Fed push 10Y yields near 5.00%',
+            sentiment: 'bearish',
+            weight: 22,
+            source: 'Saxo Bank',
+            url: 'https://www.home.saxo/content/articles/macro/market-quick-take---us-treasury-yields-rip-higher---11-november-2026-11112026'
+          },
+          {
+            id: 3,
+            title: 'SPX reclaims 7,500 support & 200 EMA; resistance at 7,620–7,645',
+            sentiment: 'bullish',
+            weight: 10,
+            source: 'StoneX',
+            url: 'https://www.stonex.com/en-gb/news-and-analysis/sandp-500-forecast-spx-rebounds-amid-revived-ai-enthusiasm/'
+          },
+          {
+            id: 4,
+            title: 'Historical December seasonality: positive 70% of the time',
+            sentiment: 'bullish',
+            weight: 8,
+            source: 'Business Insider',
+            url: 'https://www.businessinsider.com/stock-market-outlook-sell-off-sp500-rally-wall-street-2026-11'
+          }
+        ]
+      },
+      QQQ: {
+        symbol: 'QQQ',
+        name: 'Invesco QQQ Trust (Nasdaq-100)',
+        price: 690.38,
+        prevClose: 674.76,
+        range52w: '$565.00–$712.40',
+        vix: 23.10,
+        sourceName: 'Investing.com',
+        sourceUrl: 'https://ca.investing.com/etfs/powershares-qqqq-historical-data',
+        greeks: { delta: 0.61, gamma: 0.042, theta: -0.17, vega: 0.26 },
+        news: [
+          {
+            id: 101,
+            title: 'Nasdaq 100 rebounds as QQQ jumps +2.31% on Nov 11 session',
+            sentiment: 'bullish',
+            weight: 22,
+            source: 'Investing.com',
+            url: 'https://ca.investing.com/etfs/powershares-qqqq-historical-data'
+          },
+          {
+            id: 102,
+            title: 'Higher Treasury yields near 5% pressure growth-stock valuations',
+            sentiment: 'bearish',
+            weight: 18,
+            source: 'Saxo Bank',
+            url: 'https://www.home.saxo/content/articles/macro/market-quick-take---us-treasury-yields-rip-higher---11-november-2026-11112026'
+          }
+        ]
+      },
+      NVDA: {
+        symbol: 'NVDA',
+        name: 'NVIDIA Corporation',
+        price: 159.95,
+        prevClose: 156.20,
+        range52w: '$156.20–$243.37',
+        vix: 38.50,
+        sourceName: 'Robinhood',
+        sourceUrl: 'https://robinhood.com/us/en/stocks/NVDA/',
+        greeks: { delta: 0.54, gamma: 0.055, theta: -0.22, vega: 0.34 },
+        news: [
+          {
+            id: 201,
+            title: 'NVDA holds $156.20 52-week support ahead of earnings',
+            sentiment: 'bullish',
+            weight: 18,
+            source: 'Robinhood / StoneX',
+            url: 'https://robinhood.com/us/en/stocks/NVDA/'
+          },
+          {
+            id: 202,
+            title: 'Recent AI data-center rotation weighed on chipmakers',
+            sentiment: 'bearish',
+            weight: 20,
+            source: 'CNN',
+            url: 'https://www.cnn.com/2026/11/05/investing/tech-heavy-nasdaq-plunges'
+          }
+        ]
+      },
+      MSFT: {
+        symbol: 'MSFT',
+        name: 'Microsoft Corporation',
+        price: 521.12,
+        prevClose: 512.50,
+        range52w: '$349.20–$559.15',
+        vix: 24.20,
+        sourceName: 'Google Finance',
+        sourceUrl: 'https://www.google.com/finance/quote/MSFT:NASDAQ',
+        greeks: { delta: 0.60, gamma: 0.032, theta: -0.13, vega: 0.21 },
+        news: [
+          {
+            id: 301,
+            title: 'Analysts maintain Buy ratings with $632.48 average 12M target',
+            sentiment: 'bullish',
+            weight: 20,
+            source: 'Google Finance',
+            url: 'https://www.google.com/finance/quote/MSFT:NASDAQ'
+          },
+          {
+            id: 302,
+            title: 'Cloud capex discipline hopes lift MSFT trajectory',
+            sentiment: 'bullish',
+            weight: 14,
+            source: 'Kalkine',
+            url: 'https://kalkine.com.au/news/technology/why-did-microsoft-nasdaqmsft-rise-668-to-a-record-while-apple-nasdaqaapl-amazon-nasdaqamzn-nvidia-nasdaqnvda-and-tesla-nasdaqtsla-moved-on-november-4-2026'
+          }
+        ]
+      }
+    };
+
+    const LEGIT_SECURITIES = [
+      { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', type: 'ETF', sector: 'Broad Market (S&P 500)', estPrice: 761.32, estVix: 19.46 },
+      { symbol: 'VOO', name: 'Vanguard S&P 500 ETF', type: 'ETF', sector: 'Broad Market (S&P 500)', estPrice: 698.40, estVix: 19.40 },
+      { symbol: 'IVV', name: 'iShares Core S&P 500 ETF', type: 'ETF', sector: 'Broad Market (S&P 500)', estPrice: 763.10, estVix: 19.45 },
+      { symbol: 'QQQ', name: 'Invesco QQQ Trust (Nasdaq-100)', type: 'ETF', sector: 'Large-Cap Tech / Growth', estPrice: 690.38, estVix: 23.10 },
+      { symbol: 'DIA', name: 'SPDR Dow Jones Industrial Average ETF', type: 'ETF', sector: 'Blue-Chip Industrials', estPrice: 524.80, estVix: 17.80 },
+      { symbol: 'IWM', name: 'iShares Russell 2000 ETF', type: 'ETF', sector: 'Small-Cap US Equities', estPrice: 238.50, estVix: 24.50 },
+      { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', type: 'ETF', sector: 'Total US Market', estPrice: 342.10, estVix: 19.80 },
+      { symbol: 'XLK', name: 'Technology Select Sector SPDR Fund', type: 'ETF', sector: 'Technology Sector', estPrice: 268.40, estVix: 24.20 },
+      { symbol: 'XLF', name: 'Financial Select Sector SPDR Fund', type: 'ETF', sector: 'Financials Sector', estPrice: 52.30, estVix: 20.10 },
+      { symbol: 'XLE', name: 'Energy Select Sector SPDR Fund', type: 'ETF', sector: 'Energy Sector', estPrice: 94.60, estVix: 25.40 },
+      { symbol: 'GLD', name: 'SPDR Gold Shares', type: 'ETF', sector: 'Commodities / Gold', estPrice: 254.20, estVix: 16.90 },
+      { symbol: 'TLT', name: 'iShares 20+ Year Treasury Bond ETF', type: 'ETF', sector: 'Fixed Income / Treasuries', estPrice: 88.40, estVix: 18.20 },
+      { symbol: 'NVDA', name: 'NVIDIA Corporation', type: 'Stock', sector: 'Semiconductors & AI', estPrice: 159.95, estVix: 38.50 },
+      { symbol: 'MSFT', name: 'Microsoft Corporation', type: 'Stock', sector: 'Software & Cloud', estPrice: 521.12, estVix: 24.20 },
+      { symbol: 'AAPL', name: 'Apple Inc.', type: 'Stock', sector: 'Consumer Tech', estPrice: 342.80, estVix: 22.80 },
+      { symbol: 'AMZN', name: 'Amazon.com, Inc.', type: 'Stock', sector: 'E-Commerce & Cloud', estPrice: 238.40, estVix: 27.60 },
+      { symbol: 'GOOGL', name: 'Alphabet Inc. (Class A)', type: 'Stock', sector: 'Internet & AI', estPrice: 204.50, estVix: 26.10 },
+      { symbol: 'META', name: 'Meta Platforms, Inc.', type: 'Stock', sector: 'Social & AI', estPrice: 642.30, estVix: 31.40 },
+      { symbol: 'TSLA', name: 'Tesla, Inc.', type: 'Stock', sector: 'EVs & Energy', estPrice: 318.60, estVix: 48.20 },
+      { symbol: 'AMD', name: 'Advanced Micro Devices, Inc.', type: 'Stock', sector: 'Semiconductors', estPrice: 168.90, estVix: 41.00 },
+      { symbol: 'AVGO', name: 'Broadcom Inc.', type: 'Stock', sector: 'Semiconductors', estPrice: 214.20, estVix: 33.50 },
+      { symbol: 'NFLX', name: 'Netflix, Inc.', type: 'Stock', sector: 'Streaming & Media', estPrice: 895.40, estVix: 30.20 },
+      { symbol: 'PLTR', name: 'Palantir Technologies Inc.', type: 'Stock', sector: 'Enterprise AI Software', estPrice: 68.40, estVix: 52.00 },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', type: 'Stock', sector: 'Banking & Finance', estPrice: 256.80, estVix: 21.30 },
+      { symbol: 'WMT', name: 'Walmart Inc.', type: 'Stock', sector: 'Consumer Staples / Retail', estPrice: 92.40, estVix: 18.70 },
+      { symbol: 'COST', name: 'Costco Wholesale Corporation', type: 'Stock', sector: 'Consumer Staples / Retail', estPrice: 948.20, estVix: 20.50 },
+      { symbol: 'DIS', name: 'The Walt Disney Company', type: 'Stock', sector: 'Media & Entertainment', estPrice: 112.30, estVix: 26.80 },
+      { symbol: 'BA', name: 'The Boeing Company', type: 'Stock', sector: 'Aerospace & Defense', estPrice: 178.50, estVix: 35.40 },
+      { symbol: 'COIN', name: 'Coinbase Global, Inc.', type: 'Stock', sector: 'Crypto & Fintech', estPrice: 274.10, estVix: 64.00 },
+      { symbol: 'XOM', name: 'Exxon Mobil Corporation', type: 'Stock', sector: 'Oil & Gas', estPrice: 121.40, estVix: 22.90 }
+    ];
+
+    const state = {
+      activeTab: 'analyzer',
+      symbol: 'SPY',
+      assetName: 'SPDR S&P 500 ETF Trust',
+      range52w: '$629.28–$781.62',
+      sourceName: 'Kraken',
+      sourceUrl: 'https://www.kraken.com/stocks/spy',
+      isGrounded: true,
+      spyPrice: 761.32,
+      prevClose: 749.92,
+      vix: 19.46,
+      secondsRemaining: 300, // 5 minutes
+      autoCheck: true,
+      greeks: {
+        delta: 0.58,
+        gamma: 0.035,
+        theta: -0.14,
+        vega: 0.22
+      },
+      news: [
+        {
+          id: 1,
+          title: 'AI stocks rebound lifts S&P 500 +1.31% to 7,619.38',
+          sentiment: 'bullish',
+          weight: 18,
+          source: 'ITVX',
+          url: 'https://www.itv.com/news/2026-11-11/a-rebound-in-ai-stocks-lifts-the-us-market-as-the-sp-500-climbs'
+        },
+        {
+          id: 2,
+          title: 'Hot Oct CPI (0.4% MoM) & hawkish Fed push 10Y yields near 5.00%',
+          sentiment: 'bearish',
+          weight: 22,
+          source: 'Saxo Bank',
+          url: 'https://www.home.saxo/content/articles/macro/market-quick-take---us-treasury-yields-rip-higher---11-november-2026-11112026'
+        },
+        {
+          id: 3,
+          title: 'SPX reclaims 7,500 support & 200 EMA; resistance at 7,620–7,645',
+          sentiment: 'bullish',
+          weight: 10,
+          source: 'StoneX',
+          url: 'https://www.stonex.com/en-gb/news-and-analysis/sandp-500-forecast-spx-rebounds-amid-revived-ai-enthusiasm/'
+        },
+        {
+          id: 4,
+          title: 'Historical December seasonality: positive 70% of the time',
+          sentiment: 'bullish',
+          weight: 8,
+          source: 'Business Insider',
+          url: 'https://www.businessinsider.com/stock-market-outlook-sell-off-sp500-rally-wall-street-2026-11'
+        }
+      ],
+      checkLog: [],
+      technicals: {
+        rsi: 56.4,
+        ma50DiffPct: 1.2,
+        ma200DiffPct: 4.8
+      },
+      sim: {
+        strategy: 'single', // 'single' | 'bull_call_spread' | 'bear_put_spread' | 'covered_call' | 'iron_condor'
+        side: 'buy',        // 'buy' | 'sell'
+        type: 'call',       // 'call' | 'put'
+        dte: 30,            // days to expiration
+        strike: 765,        // selected strike
+        contracts: 1,
+        orderType: 'limit', // 'limit' | 'market'
+        limitPrice: 14.20,
+        buyingPower: 25000,
+        positions: [],
+        selectedPosId: null
+      }
+    };
+
+    let timerInterval = null;
+    let trendChart = null;
+    let payoffChart = null;
+    let positionTrendChart = null;
+    let nextNewsId = 5;
+    let nextPosId = 1;
+    let finnhubApiKey = '';
+    const STORAGE_KEY = 'spy_analyzer_step2_v1';
+
+    function saveToStorage() {
+      try {
+        const payload = {
+          finnhubApiKey,
+          buyingPower: state.sim.buyingPower,
+          positions: state.sim.positions,
+          selectedPosId: state.sim.selectedPosId,
+          checkLog: state.checkLog
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (e) {
+        // Ignore storage quota or sandbox restrictions
+      }
+    }
+
+    function loadFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (typeof data.finnhubApiKey === 'string') finnhubApiKey = data.finnhubApiKey;
+        if (typeof data.buyingPower === 'number') state.sim.buyingPower = data.buyingPower;
+        if (Array.isArray(data.positions)) {
+          state.sim.positions = data.positions;
+          const maxId = data.positions.reduce((m, p) => Math.max(m, p.id || 0), 0);
+          nextPosId = maxId + 1;
+        }
+        if (data.selectedPosId) state.sim.selectedPosId = data.selectedPosId;
+        if (Array.isArray(data.checkLog)) state.checkLog = data.checkLog;
+      } catch (e) {
+        // Ignore parse or sandbox restrictions
+      }
+    }
+
+    function autoScoreHeadline(text) {
+      const lower = String(text || '').toLowerCase();
+      const bullishWords = ['rally', 'rebound', 'surge', 'beat', 'beats', 'upgrade', 'record', 'growth', 'pause', 'cut', 'cuts', 'soar', 'gain', 'gains', 'bullish', 'strong', 'support', 'jumps', 'climb', 'climbs'];
+      const bearishWords = ['drop', 'drops', 'fall', 'falls', 'plunge', 'miss', 'misses', 'downgrade', 'hike', 'hikes', 'hawkish', 'inflation', 'cpi', 'sell-off', 'selloff', 'recession', 'slump', 'fear', 'fears', 'yields', 'warning', 'bearish'];
+
+      let score = 0;
+      bullishWords.forEach(w => { if (lower.includes(w)) score += 1; });
+      bearishWords.forEach(w => { if (lower.includes(w)) score -= 1; });
+
+      const mag = Math.abs(score);
+      const weight = mag >= 2 ? 28 : mag === 1 ? 18 : 10;
+      const sentiment = score > 0 ? 'bullish' : score < 0 ? 'bearish' : 'neutral';
+      return { sentiment, weight };
+    }
+
+    function showApiStatus(msg, isError = false) {
+      const el = document.getElementById('apiStatusMsg');
+      el.textContent = msg;
+      el.className = `text-xs px-3 py-2 rounded-lg border ${
+        isError
+          ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+      }`;
+      el.classList.remove('hidden');
+    }
+
+    function updateLiveBadge() {
+      const badge = document.getElementById('liveModeBadge');
+      if (finnhubApiKey) {
+        badge.textContent = 'Live Finnhub Enabled';
+        badge.className = 'text-xs font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+      } else {
+        badge.textContent = 'Demo / Snapshot Mode';
+        badge.className = 'text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800 text-slate-300';
+      }
+    }
+
+    async function fetchLiveSymbolData(sym) {
+      if (!finnhubApiKey) return false;
+      try {
+        const quoteRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(finnhubApiKey)}`);
+        if (!quoteRes.ok) throw new Error(`HTTP ${quoteRes.status}`);
+        const quote = await quoteRes.json();
+        if (!quote || !quote.c || quote.c <= 0) throw new Error('Invalid symbol or empty quote');
+
+        state.spyPrice = +quote.c.toFixed(2);
+        state.prevClose = quote.pc ? +quote.pc.toFixed(2) : state.spyPrice;
+        state.isGrounded = true;
+        state.sourceName = 'Finnhub Live';
+        state.sourceUrl = `https://finnhub.io/`;
+
+        // Fetch recent company news (last 7 days)
+        const toDate = new Date().toISOString().slice(0, 10);
+        const fromDate = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const newsRes = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${fromDate}&to=${toDate}&token=${encodeURIComponent(finnhubApiKey)}`);
+        if (newsRes.ok) {
+          const items = await newsRes.json();
+          if (Array.isArray(items) && items.length > 0) {
+            state.news = items.slice(0, 5).map((item, idx) => {
+              const scored = autoScoreHeadline(item.headline || '');
+              return {
+                id: nextNewsId + idx,
+                title: item.headline,
+                sentiment: scored.sentiment,
+                weight: scored.weight,
+                source: item.source || 'Finnhub',
+                url: item.url || ''
+              };
+            });
+            nextNewsId += 5;
+          }
+        }
+        showApiStatus(`Live quote loaded for ${sym}: $${state.spyPrice.toFixed(2)}`);
+        return true;
+      } catch (err) {
+        showApiStatus(`Live API fallback (${err.message}). Using local/snapshot data.`, true);
+        return false;
+      }
+    }
+
+    // --- Core Scoring Model (Greeks + News -> 1W, 1M, 3M, 6M) ---
+    function computeAnalysis() {
+      const { delta, gamma, theta, vega } = state.greeks;
+
+      let rawNewsNet = 0;
+      state.news.forEach(item => {
+        if (item.sentiment === 'bullish') rawNewsNet += item.weight;
+        else if (item.sentiment === 'bearish') rawNewsNet -= item.weight;
+      });
+      const newsNet = Math.max(-60, Math.min(60, rawNewsNet));
+
+      const deltaBias = (delta - 0.50) * 100;
+      const gammaBoost = (gamma / 0.04) * (deltaBias >= 0 ? 6 : -6);
+      const thetaDrag = theta * 35;
+      const vegaMacroDrag = (vega - 0.20) * (state.vix > 20 ? -40 : -15);
+      const greeksCore = deltaBias + gammaBoost + thetaDrag;
+
+      const rsiScore = state.technicals.rsi > 70 ? -6 : state.technicals.rsi < 30 ? 8 : (state.technicals.rsi - 50) * 0.4;
+      const maScore = (state.technicals.ma50DiffPct * 1.5) + (state.technicals.ma200DiffPct * 0.8);
+      const techNet = Math.round(Math.max(-25, Math.min(25, rsiScore + maScore)));
+
+      const horizons = [
+        {
+          label: '1 Week',
+          key: '1W',
+          score: clampScore(greeksCore * 1.1 + newsNet * 0.8 + techNet * 0.5),
+          driver: 'Driven by short-term Delta/Gamma momentum, RSI, and immediate headline reaction.'
+        },
+        {
+          label: '1 Month',
+          key: '1M',
+          score: clampScore(greeksCore * 0.95 + newsNet * 0.7 + thetaDrag * 0.4 + techNet * 0.6),
+          driver: 'Balances options positioning, 50-day MA trend, and Theta decay against macro news.'
+        },
+        {
+          label: '3 Months',
+          key: '3M',
+          score: clampScore(deltaBias * 0.85 + newsNet * 0.6 + vegaMacroDrag * 1.1 + techNet * 0.5 + 3),
+          driver: 'Reflects Vega sensitivity to rate expectations alongside 200-day MA trend.'
+        },
+        {
+          label: '6 Months',
+          key: '6M',
+          score: clampScore(deltaBias * 0.75 + newsNet * 0.45 + vegaMacroDrag * 1.4 + techNet * 0.4 + 6),
+          driver: 'Weights longer-term structural trend, 200-day MA, and volatility regime.'
+        }
+      ];
+
+      const composite = Math.round(
+        horizons.reduce((sum, h) => sum + h.score, 0) / horizons.length
+      );
+
+      return { newsNet, techNet, horizons, composite };
+    }
+
+    function clampScore(val) {
+      return Math.max(-100, Math.min(100, Math.round(val)));
+    }
+
+    // --- Black-Scholes Option Pricing & Greeks (for Robinhood Simulator) ---
+    function normCDF(x) {
+      const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+      const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+      const sign = x < 0 ? -1 : 1;
+      const absX = Math.abs(x) / Math.sqrt(2);
+      const t = 1 / (1 + p * absX);
+      const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
+      return 0.5 * (1 + sign * y);
+    }
+
+    function normPDF(x) {
+      return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+    }
+
+    function priceOption(S, K, dte, sigma, type) {
+      const T = Math.max(dte, 1) / 365;
+      const r = 0.045; // 4.5% risk-free rate
+      const sqrtT = Math.sqrt(T);
+      const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+      const d2 = d1 - sigma * sqrtT;
+
+      const nd1 = normCDF(d1);
+      const nd2 = normCDF(d2);
+      const npd1 = normPDF(d1);
+
+      let price, delta, theta, rho, probITM;
+      if (type === 'call') {
+        price = S * nd1 - K * Math.exp(-r * T) * nd2;
+        delta = nd1;
+        theta = (-(S * npd1 * sigma) / (2 * sqrtT) - r * K * Math.exp(-r * T) * nd2) / 365;
+        rho = (K * T * Math.exp(-r * T) * nd2) / 100;
+        probITM = nd2;
+      } else {
+        price = K * Math.exp(-r * T) * normCDF(-d2) - S * normCDF(-d1);
+        delta = nd1 - 1;
+        theta = (-(S * npd1 * sigma) / (2 * sqrtT) + r * K * Math.exp(-r * T) * normCDF(-d2)) / 365;
+        rho = (-K * T * Math.exp(-r * T) * normCDF(-d2)) / 100;
+        probITM = normCDF(-d2);
+      }
+
+      const gamma = npd1 / (S * sigma * sqrtT);
+      const vega = (S * npd1 * sqrtT) / 100;
+      const mark = Math.max(0.05, +price.toFixed(2));
+      const spread = Math.max(0.02, +(mark * 0.02).toFixed(2));
+      const bid = Math.max(0.01, +(mark - spread / 2).toFixed(2));
+      const ask = +(mark + spread / 2).toFixed(2);
+
+      return { mark, bid, ask, delta, gamma, theta, vega, rho, probITM };
+    }
+
+    function getStrikeStep(price) {
+      if (price >= 200) return 5;
+      if (price >= 50) return 2.5;
+      return 1;
+    }
+
+    function getStrikeList() {
+      const step = getStrikeStep(state.spyPrice);
+      const center = Math.round(state.spyPrice / step) * step;
+      const strikes = [];
+      for (let i = -3; i <= 3; i += 1) {
+        const k = +(center + i * step).toFixed(2);
+        if (k > 0) strikes.push(k);
+      }
+      return strikes;
+    }
+
+    function getExpiryLabel(dte) {
+      const map = {
+        7: 'Nov 18, 2026 (7 DTE)',
+        30: 'Dec 11, 2026 (30 DTE)',
+        65: 'Jan 15, 2027 (65 DTE)',
+        100: 'Feb 19, 2027 (100 DTE)'
+      };
+      return map[dte] || `${dte} DTE`;
+    }
+
+    // --- Rendering ---
+    function renderAll() {
+      const analysis = computeAnalysis();
+
+      document.getElementById('appMainTitle').textContent = `TrendTheta · ${state.symbol} Analyzer`;
+      document.getElementById('assetPriceLabel').textContent = `${state.symbol} Price`;
+      document.getElementById('assetInfoLabel').textContent = state.assetName;
+      document.getElementById('assetRangeDisplay').textContent = state.range52w;
+      document.getElementById('chainTitle').textContent = `${state.symbol} Option Chain (Select a Strike)`;
+
+      const sourceLine = document.getElementById('assetSourceLine');
+      if (state.isGrounded && state.sourceUrl) {
+        sourceLine.innerHTML = `Prev Close: $${state.prevClose.toFixed(2)} (<a href="${state.sourceUrl}" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-300">${escapeHtml(state.sourceName)}</a>)`;
+      } else {
+        sourceLine.textContent = `Prev Close: $${state.prevClose.toFixed(2)} (Modeled Demo Quote)`;
+      }
+
+      document.getElementById('spyPriceDisplay').textContent = `$${state.spyPrice.toFixed(2)}`;
+      const pct = ((state.spyPrice - state.prevClose) / state.prevClose) * 100;
+      const chgEl = document.getElementById('spyChangeDisplay');
+      chgEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+      chgEl.className = `text-xs font-semibold ${pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+      document.getElementById('vixDisplay').textContent = `${state.vix.toFixed(2)}%`;
+      const volRegime = document.getElementById('volRegimeLabel');
+      volRegime.textContent = state.vix >= 30 ? 'High' : state.vix >= 20 ? 'Elevated' : 'Moderate';
+
+      // Technical Indicators display
+      const techBadge = document.getElementById('techSignalBadge');
+      techBadge.textContent = `${analysis.techNet >= 0 ? 'Bullish' : 'Bearish'} (${analysis.techNet >= 0 ? '+' : ''}${analysis.techNet})`;
+      techBadge.className = `text-xs font-mono px-2.5 py-1 rounded-full border ${
+        analysis.techNet >= 0
+          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+          : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+      }`;
+      document.getElementById('techRsiDisplay').textContent = state.technicals.rsi.toFixed(1);
+      document.getElementById('techRsiLabel').textContent =
+        state.technicals.rsi >= 70 ? 'Overbought' : state.technicals.rsi <= 30 ? 'Oversold' : 'Healthy Momentum';
+      const ma50El = document.getElementById('techMa50Display');
+      ma50El.textContent = `${state.technicals.ma50DiffPct >= 0 ? '+' : ''}${state.technicals.ma50DiffPct.toFixed(1)}%`;
+      ma50El.className = `text-base font-mono font-bold mt-0.5 ${state.technicals.ma50DiffPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+      const ma200El = document.getElementById('techMa200Display');
+      ma200El.textContent = `${state.technicals.ma200DiffPct >= 0 ? '+' : ''}${state.technicals.ma200DiffPct.toFixed(1)}%`;
+      ma200El.className = `text-base font-mono font-bold mt-0.5 ${state.technicals.ma200DiffPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+      const overallBadge = document.getElementById('overallSignalBadge');
+      const isUp = analysis.composite >= 0;
+      overallBadge.textContent = isUp ? 'Uptrend' : 'Downtrend';
+      overallBadge.className = `text-xl font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`;
+      document.getElementById('overallScoreDisplay').textContent =
+        `${analysis.composite >= 0 ? '+' : ''}${analysis.composite} / 100`;
+
+      const newsBadge = document.getElementById('newsScoreBadge');
+      newsBadge.textContent = `News Net: ${analysis.newsNet >= 0 ? '+' : ''}${analysis.newsNet}`;
+      newsBadge.className = `text-xs font-mono px-2.5 py-1 rounded-full border ${
+        analysis.newsNet >= 0
+          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+          : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+      }`;
+
+      const grid = document.getElementById('horizonGrid');
+      grid.innerHTML = analysis.horizons.map(h => {
+        const up = h.score >= 0;
+        const confidence = Math.min(95, Math.max(52, 50 + Math.round(Math.abs(h.score) * 0.7)));
+        return `
+          <div class="bg-slate-900 border ${up ? 'border-emerald-500/30' : 'border-rose-500/30'} rounded-2xl p-4 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">${h.label}</span>
+                <span class="text-xs font-mono text-slate-400">Score ${h.score >= 0 ? '+' : ''}${h.score}</span>
+              </div>
+              <div class="mt-2 flex items-center justify-between">
+                <span class="text-lg font-bold ${up ? 'text-emerald-400' : 'text-rose-400'}">
+                  ${up ? '▲ Uptrend' : '▼ Downtrend'}
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded-full ${
+                  up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'
+                }">
+                  ${confidence}% conf.
+                </span>
+              </div>
+            </div>
+            <p class="text-xs text-slate-400 mt-3 leading-relaxed">${h.driver}</p>
+          </div>
+        `;
+      }).join('');
+
+      // Recommended Entry & Exit Points (1D, 1W, 1M, 3M)
+      const ivDecimal = Math.max(0.10, state.vix / 100);
+      const intervals = [
+        { label: '1 Day', days: 1, dte: 7, score: analysis.horizons[0].score },
+        { label: '1 Week', days: 5, dte: 7, score: analysis.horizons[0].score },
+        { label: '1 Month', days: 21, dte: 30, score: analysis.horizons[1].score },
+        { label: '3 Months', days: 63, dte: 100, score: analysis.horizons[2].score }
+      ];
+
+      const entryExitGrid = document.getElementById('entryExitGrid');
+      entryExitGrid.innerHTML = intervals.map(ivl => {
+        const expectedMove = state.spyPrice * ivDecimal * Math.sqrt(ivl.days / 252);
+        const strength = 0.65 + Math.min(0.6, Math.abs(ivl.score) / 100);
+        const isUp = ivl.score >= 0;
+
+        let entryLow, entryHigh, targetExit, stopLoss;
+        if (isUp) {
+          entryLow = state.spyPrice - expectedMove * 0.25;
+          entryHigh = state.spyPrice + expectedMove * 0.05;
+          targetExit = state.spyPrice + expectedMove * strength;
+          stopLoss = state.spyPrice - expectedMove * 0.55;
+        } else {
+          entryLow = state.spyPrice - expectedMove * 0.05;
+          entryHigh = state.spyPrice + expectedMove * 0.25;
+          targetExit = state.spyPrice - expectedMove * strength;
+          stopLoss = state.spyPrice + expectedMove * 0.55;
+        }
+
+        const midEntry = (entryLow + entryHigh) / 2;
+        const estGainPct = Math.abs((targetExit - midEntry) / midEntry) * 100;
+        const rrRatio = Math.abs(targetExit - midEntry) / Math.max(0.01, Math.abs(midEntry - stopLoss));
+
+        return `
+          <div class="bg-slate-900 border ${isUp ? 'border-emerald-500/30' : 'border-rose-500/30'} rounded-2xl p-4 flex flex-col justify-between space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">${ivl.label}</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${
+                isUp ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'
+              }">
+                ${isUp ? 'Long / Call' : 'Short / Put'}
+              </span>
+            </div>
+            <div class="space-y-1.5 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Entry Zone</span>
+                <span class="font-mono font-semibold text-white">$${entryLow.toFixed(2)} – $${entryHigh.toFixed(2)}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Target Exit</span>
+                <span class="font-mono font-semibold text-emerald-400">$${targetExit.toFixed(2)} (+${estGainPct.toFixed(1)}%)</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Stop-Loss</span>
+                <span class="font-mono font-semibold text-rose-400">$${stopLoss.toFixed(2)}</span>
+              </div>
+              <div class="flex justify-between pt-1 border-t border-slate-800/80">
+                <span class="text-slate-400">Risk / Reward</span>
+                <span class="font-mono text-sky-400">1 : ${rrRatio.toFixed(2)}</span>
+              </div>
+            </div>
+            <button type="button" data-load-setup="${isUp ? 'call' : 'put'}" data-setup-dte="${ivl.dte}"
+              class="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer">
+              Trade Setup in Simulator
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      const newsList = document.getElementById('newsList');
+      if (state.news.length === 0) {
+        newsList.innerHTML = '<li class="text-xs text-slate-500 py-4 text-center">No events added yet. Add a headline above to see its impact.</li>';
+      } else {
+        newsList.innerHTML = state.news.map(item => {
+          const badgeColors =
+            item.sentiment === 'bullish'
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+              : item.sentiment === 'bearish'
+              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+              : 'bg-slate-700/40 text-slate-300 border-slate-600';
+          const sourceHtml = item.url
+            ? `<a href="${item.url}" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-200">${escapeHtml(item.source)}</a>`
+            : `<span>${escapeHtml(item.source)}</span>`;
+
+          return `
+            <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex items-start justify-between gap-3">
+              <div class="space-y-1">
+                <p class="text-sm text-slate-200 leading-snug">${escapeHtml(item.title)}</p>
+                <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                  <span class="px-2 py-0.5 rounded-full border ${badgeColors} capitalize">${item.sentiment} (${item.sentiment === 'bearish' ? '-' : item.sentiment === 'bullish' ? '+' : ''}${item.sentiment === 'neutral' ? 0 : item.weight})</span>
+                  <span>Source: ${sourceHtml}</span>
+                </div>
+              </div>
+              <button type="button" data-remove-news="${item.id}"
+                class="text-xs text-slate-500 hover:text-rose-400 px-1.5 py-0.5 rounded cursor-pointer" title="Remove event">
+                ✕
+              </button>
+            </li>
+          `;
+        }).join('');
+      }
+
+      const logList = document.getElementById('checkLogList');
+      logList.innerHTML = state.checkLog.map(entry => `
+        <li class="flex items-center justify-between bg-slate-950/60 border border-slate-800/80 rounded-lg px-3 py-2">
+          <div class="flex items-center gap-2">
+            <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">${entry.trigger}</span>
+            <span class="text-slate-300 font-mono">$${entry.price.toFixed(2)}</span>
+            <span class="${entry.signal === 'Uptrend' ? 'text-emerald-400' : 'text-rose-400'} font-semibold">${entry.signal}</span>
+          </div>
+          <span class="text-slate-500">${entry.time}</span>
+        </li>
+      `).join('');
+
+      updateChart(analysis.horizons);
+      renderSimulator();
+    }
+
+    function renderSimulator(syncLimit = false) {
+      const { side, type, dte, contracts, orderType } = state.sim;
+      const strikes = getStrikeList();
+      if (!strikes.includes(state.sim.strike)) {
+        state.sim.strike = strikes[Math.floor(strikes.length / 2)];
+      }
+      const baseIV = Math.max(0.12, state.vix / 100);
+
+      // Option Chain rows
+      const chainBody = document.getElementById('optionChainBody');
+      chainBody.innerHTML = strikes.map(k => {
+        const skew = ((state.spyPrice - k) / state.spyPrice) * 0.12;
+        const iv = Math.max(0.10, baseIV + skew);
+        const opt = priceOption(state.spyPrice, k, dte, iv, type);
+        const isSelected = k === state.sim.strike;
+        const itm = (type === 'call' && state.spyPrice > k) || (type === 'put' && state.spyPrice < k);
+        const chanceProfit = side === 'buy'
+          ? Math.max(5, Math.min(95, opt.probITM * 100 * 0.9))
+          : Math.max(5, Math.min(95, (1 - opt.probITM) * 100));
+
+        return `
+          <tr data-strike="${k}" class="cursor-pointer transition ${isSelected ? 'bg-sky-500/15' : 'hover:bg-slate-800/60'}">
+            <td class="px-3 py-2.5 font-mono font-semibold text-white">
+              $${k}
+              <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${itm ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}">
+                ${itm ? 'ITM' : 'OTM'}
+              </span>
+            </td>
+            <td class="px-3 py-2.5 font-mono text-slate-300">$${opt.bid.toFixed(2)}</td>
+            <td class="px-3 py-2.5 font-mono text-slate-300">$${opt.ask.toFixed(2)}</td>
+            <td class="px-3 py-2.5 font-mono font-semibold text-emerald-400">$${opt.mark.toFixed(2)}</td>
+            <td class="px-3 py-2.5 font-mono text-slate-300">${(iv * 100).toFixed(1)}%</td>
+            <td class="px-3 py-2.5 font-mono text-sky-400">${opt.delta.toFixed(2)}</td>
+            <td class="px-3 py-2.5 font-mono text-slate-300">${chanceProfit.toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Selected Contract Calculation
+      const selectedSkew = ((state.spyPrice - state.sim.strike) / state.spyPrice) * 0.12;
+      const selectedIV = Math.max(0.10, baseIV + selectedSkew);
+      const selected = priceOption(state.spyPrice, state.sim.strike, dte, selectedIV, type);
+
+      if (syncLimit) {
+        state.sim.limitPrice = selected.mark;
+        document.getElementById('simLimitPriceInput').value = selected.mark.toFixed(2);
+      }
+
+      const execPrice = orderType === 'market' ? selected.mark : Math.max(0.01, state.sim.limitPrice || selected.mark);
+      const sideLabel = side === 'buy' ? 'Buy' : 'Sell';
+      const typeLabel = type === 'call' ? 'Call' : 'Put';
+
+      document.getElementById('ticketContractTitle').textContent = `${sideLabel} ${state.symbol} $${state.sim.strike} ${typeLabel}`;
+      document.getElementById('ticketExpiryLabel').textContent = `Exp: ${getExpiryLabel(dte)}`;
+      document.getElementById('ticketMarkPrice').textContent = `$${selected.mark.toFixed(2)}`;
+      document.getElementById('ticketBidAsk').textContent = `Bid $${selected.bid.toFixed(2)} · Ask $${selected.ask.toFixed(2)}`;
+
+      // Breakeven, Max Profit, Max Loss, Collateral
+      const breakeven = type === 'call' ? state.sim.strike + execPrice : state.sim.strike - execPrice;
+      const totalPremium = execPrice * 100 * contracts;
+
+      let maxProfitText, maxLossText, costLabel, totalCostText;
+      if (side === 'buy') {
+        maxProfitText = type === 'call' ? 'Unlimited' : `$${((state.sim.strike - execPrice) * 100 * contracts).toFixed(2)}`;
+        maxLossText = `$${totalPremium.toFixed(2)}`;
+        costLabel = 'Estimated Cost';
+        totalCostText = `$${totalPremium.toFixed(2)}`;
+      } else {
+        maxProfitText = `$${totalPremium.toFixed(2)}`;
+        maxLossText = type === 'call' ? 'Unlimited (Uncovered)' : `$${((state.sim.strike - execPrice) * 100 * contracts).toFixed(2)}`;
+        const collateral = (type === 'put' ? state.sim.strike : state.spyPrice) * 100 * contracts;
+        costLabel = 'Collateral / Credit';
+        totalCostText = `$${collateral.toFixed(2)} (+$${totalPremium.toFixed(2)} credit)`;
+      }
+
+      const chanceProfit = side === 'buy'
+        ? Math.max(5, Math.min(95, selected.probITM * 100 * 0.9))
+        : Math.max(5, Math.min(95, (1 - selected.probITM) * 100));
+
+      document.getElementById('ticketBreakeven').textContent = `$${breakeven.toFixed(2)}`;
+      document.getElementById('payoffBreakevenBadge').textContent = `Breakeven: $${breakeven.toFixed(2)}`;
+      document.getElementById('ticketChanceProfit').textContent = `${chanceProfit.toFixed(1)}%`;
+      document.getElementById('ticketMaxProfit').textContent = maxProfitText;
+      document.getElementById('ticketMaxLoss').textContent = maxLossText;
+      document.getElementById('ticketIV').textContent = `${(selectedIV * 100).toFixed(1)}%`;
+
+      const vol = Math.round(1200 + Math.abs(selected.delta) * 4800);
+      const oi = Math.round(5400 + Math.abs(selected.delta) * 21000);
+      document.getElementById('ticketVolOI').textContent = `${vol.toLocaleString()} / ${oi.toLocaleString()}`;
+
+      document.getElementById('greekDelta').textContent = selected.delta.toFixed(2);
+      document.getElementById('greekGamma').textContent = selected.gamma.toFixed(3);
+      document.getElementById('greekTheta').textContent = selected.theta.toFixed(2);
+      document.getElementById('greekVega').textContent = selected.vega.toFixed(2);
+      document.getElementById('greekRho').textContent = selected.rho.toFixed(2);
+
+      document.getElementById('ticketCostLabel').textContent = costLabel;
+      document.getElementById('ticketTotalCost').textContent = totalCostText;
+
+      const submitBtn = document.getElementById('submitSimOrderBtn');
+      submitBtn.textContent = `Submit Simulated ${sideLabel} Order`;
+      submitBtn.className = `w-full py-2.5 rounded-xl font-bold text-sm transition cursor-pointer ${
+        side === 'buy'
+          ? 'bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950'
+          : 'bg-rose-500 hover:bg-rose-400 active:bg-rose-600 text-white'
+      }`;
+
+      document.getElementById('paperBuyingPower').textContent = `$${state.sim.buyingPower.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      // Paper Positions List
+      const posList = document.getElementById('simPositionsList');
+      if (state.sim.positions.length === 0) {
+        posList.innerHTML = '<li class="text-slate-500 text-center py-4">No simulated positions yet. Submit an order above to practice.</li>';
+      } else {
+        posList.innerHTML = state.sim.positions.map(pos => {
+          const curOpt = priceOption(state.spyPrice, pos.strike, pos.dte, Math.max(0.12, state.vix / 100), pos.type);
+          const currentVal = curOpt.mark * 100 * pos.contracts;
+          const pnl = pos.side === 'buy'
+            ? (curOpt.mark - pos.entryPrice) * 100 * pos.contracts
+            : (pos.entryPrice - curOpt.mark) * 100 * pos.contracts;
+          const isSelected = pos.id === state.sim.selectedPosId;
+          return `
+            <li data-select-pos="${pos.id}" class="cursor-pointer transition rounded-xl p-3 flex items-center justify-between gap-2 border ${
+              isSelected ? 'bg-sky-500/15 border-sky-500/50' : 'bg-slate-950/70 border-slate-800 hover:bg-slate-800/60'
+            }">
+              <div>
+                <div class="font-semibold text-white">
+                  ${pos.side.toUpperCase()} ${pos.contracts}x ${pos.symbol || 'SPY'} $${pos.strike} ${pos.type.toUpperCase()}
+                </div>
+                <div class="text-slate-400">
+                  Value: $${currentVal.toFixed(2)} · Mark: $${curOpt.mark.toFixed(2)} · Click for chart
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="font-mono font-semibold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                  ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}
+                </span>
+                <button type="button" data-close-pos="${pos.id}"
+                  class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer">
+                  Close
+                </button>
+              </div>
+            </li>
+          `;
+        }).join('');
+      }
+
+      renderSelectedPositionTrend();
+      if (state.sim.strategy !== 'single') {
+        const step = getStrikeStep(state.spyPrice);
+        const k1 = state.sim.strike;
+        const k2 = +(k1 + step * 2).toFixed(2);
+        const kPutLow = +(k1 - step * 3).toFixed(2);
+        const kPutHigh = +(k1 - step).toFixed(2);
+        const stratNames = {
+          bull_call_spread: `Bull Call Spread (${state.symbol} $${k1}/$${k2})`,
+          bear_put_spread: `Bear Put Spread (${state.symbol} $${k1}/$${+(k1 - step * 2).toFixed(2)})`,
+          covered_call: `Covered Call (${state.symbol} 100sh + $${k2} Call)`,
+          iron_condor: `Iron Condor (${state.symbol} $${kPutLow}/$${kPutHigh}P · $${k1}/$${k2}C)`
+        };
+        document.getElementById('ticketContractTitle').textContent = stratNames[state.sim.strategy];
+      }
+      updatePayoffChart(side, type, state.sim.strike, execPrice, contracts, state.sim.strategy);
+    }
+
+    function renderSelectedPositionTrend() {
+      const card = document.getElementById('positionTrendCard');
+      const pos = state.sim.positions.find(p => p.id === state.sim.selectedPosId);
+      if (!pos) {
+        card.classList.add('hidden');
+        return;
+      }
+      card.classList.remove('hidden');
+
+      const curOpt = priceOption(state.spyPrice, pos.strike, pos.dte, Math.max(0.12, state.vix / 100), pos.type);
+      const entryVal = pos.entryPrice * 100 * pos.contracts;
+      const currentVal = curOpt.mark * 100 * pos.contracts;
+      const pnl = pos.side === 'buy'
+        ? (curOpt.mark - pos.entryPrice) * 100 * pos.contracts
+        : (pos.entryPrice - curOpt.mark) * 100 * pos.contracts;
+      const pct = entryVal > 0 ? (pnl / entryVal) * 100 : 0;
+
+      document.getElementById('posTrendTitle').textContent =
+        `${pos.side.toUpperCase()} ${pos.contracts}x ${pos.symbol || 'SPY'} $${pos.strike} ${pos.type.toUpperCase()} (${pos.dte} DTE)`;
+      document.getElementById('posTrendEntryVal').textContent = `$${entryVal.toFixed(2)}`;
+      document.getElementById('posTrendCurrentVal').textContent = `$${currentVal.toFixed(2)}`;
+
+      const pnlEl = document.getElementById('posTrendPnl');
+      pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+      pnlEl.className = `font-mono font-bold mt-0.5 ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+      const pctEl = document.getElementById('posTrendPct');
+      pctEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+      pctEl.className = `text-xs font-mono px-2.5 py-1 rounded-full border ${
+        pnl >= 0
+          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+          : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+      }`;
+
+      const ctx = document.getElementById('positionTrendChart').getContext('2d');
+      const labels = pos.history.map(h => h.time);
+      const values = pos.history.map(h => h.value);
+      const pnls = pos.history.map(h => h.pnl);
+
+      if (positionTrendChart) {
+        positionTrendChart.data.labels = labels;
+        positionTrendChart.data.datasets[0].data = values;
+        positionTrendChart.data.datasets[1].data = pnls;
+        positionTrendChart.update();
+        return;
+      }
+
+      positionTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Option Value ($)',
+              data: values,
+              borderColor: '#38bdf8',
+              backgroundColor: 'rgba(56, 189, 248, 0.12)',
+              fill: true,
+              tension: 0.25,
+              pointRadius: 4
+            },
+            {
+              label: 'P&L ($)',
+              data: pnls,
+              borderColor: '#10b981',
+              borderDash: [4, 4],
+              fill: false,
+              tension: 0.25,
+              pointRadius: 3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 11 } }
+            }
+          },
+          scales: {
+            y: {
+              grid: { color: 'rgba(148, 163, 184, 0.12)' },
+              ticks: { color: '#94a3b8' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#cbd5e1' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateChart(horizons) {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      const labels = horizons.map(h => h.label);
+      const data = horizons.map(h => h.score);
+      const colors = data.map(v => (v >= 0 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(244, 63, 94, 0.8)'));
+
+      if (trendChart) {
+        trendChart.data.labels = labels;
+        trendChart.data.datasets[0].data = data;
+        trendChart.data.datasets[0].backgroundColor = colors;
+        trendChart.update();
+        return;
+      }
+
+      trendChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Trend Score',
+            data,
+            backgroundColor: colors,
+            borderRadius: 8
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              min: -100,
+              max: 100,
+              grid: { color: 'rgba(148, 163, 184, 0.12)' },
+              ticks: { color: '#94a3b8' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#cbd5e1' }
+            }
+          }
+        }
+      });
+    }
+
+    function updatePayoffChart(side, type, strike, premium, contracts, strategy = 'single') {
+      const ctx = document.getElementById('payoffChart').getContext('2d');
+      const minP = Math.floor(state.spyPrice * 0.90);
+      const maxP = Math.ceil(state.spyPrice * 1.10);
+      const step = Math.max(1, Math.round((maxP - minP) / 16));
+      const kStep = getStrikeStep(state.spyPrice);
+      const labels = [];
+      const values = [];
+
+      for (let p = minP; p <= maxP; p += step) {
+        labels.push(`$${p}`);
+        let perShare = 0;
+        if (strategy === 'bull_call_spread') {
+          const longC = Math.max(0, p - strike);
+          const shortC = Math.max(0, p - (strike + kStep * 2));
+          perShare = (longC - shortC) - (premium * 0.55);
+        } else if (strategy === 'bear_put_spread') {
+          const longP = Math.max(0, strike - p);
+          const shortP = Math.max(0, (strike - kStep * 2) - p);
+          perShare = (longP - shortP) - (premium * 0.55);
+        } else if (strategy === 'covered_call') {
+          const stockPnl = p - state.spyPrice;
+          const shortC = Math.max(0, p - (strike + kStep * 2));
+          perShare = stockPnl + (premium * 0.65) - shortC;
+        } else if (strategy === 'iron_condor') {
+          const putSpread = Math.max(0, (strike - kStep) - p) - Math.max(0, (strike - kStep * 3) - p);
+          const callSpread = Math.max(0, p - (strike + kStep)) - Math.max(0, p - (strike + kStep * 3));
+          perShare = (premium * 0.45) - putSpread - callSpread;
+        } else {
+          const intrinsic = type === 'call' ? Math.max(0, p - strike) : Math.max(0, strike - p);
+          perShare = side === 'buy' ? (intrinsic - premium) : (premium - intrinsic);
+        }
+        values.push(+(perShare * 100 * contracts).toFixed(2));
+      }
+
+      if (payoffChart) {
+        payoffChart.data.labels = labels;
+        payoffChart.data.datasets[0].data = values;
+        payoffChart.data.datasets[0].borderColor = side === 'buy' ? '#10b981' : '#f43f5e';
+        payoffChart.data.datasets[0].backgroundColor = side === 'buy' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(244, 63, 94, 0.12)';
+        payoffChart.update();
+        return;
+      }
+
+      payoffChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'P&L at Expiration ($)',
+            data: values,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.12)',
+            fill: true,
+            tension: 0.1,
+            pointRadius: 3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              grid: { color: 'rgba(148, 163, 184, 0.12)' },
+              ticks: { color: '#94a3b8' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#cbd5e1' }
+            }
+          }
+        }
+      });
+    }
+
+    // --- 5-Minute Timer & Check Action ---
+    function formatTime(secs) {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    async function runMarketCheck(triggerLabel) {
+      let usedLive = false;
+      if (finnhubApiKey && triggerLabel !== 'Initial Load') {
+        usedLive = await fetchLiveSymbolData(state.symbol);
+      }
+      if (!usedLive && triggerLabel !== 'Initial Load' && triggerLabel !== 'Symbol Load') {
+        const tick = (Math.random() - 0.48) * (state.spyPrice * 0.002);
+        state.spyPrice = Math.max(1, +(state.spyPrice + tick).toFixed(2));
+        state.vix = Math.max(12, Math.min(45, +(state.vix + (Math.random() - 0.5) * 0.3).toFixed(2)));
+        state.technicals.rsi = Math.max(20, Math.min(85, +(state.technicals.rsi + (tick >= 0 ? 0.6 : -0.6)).toFixed(1)));
+        state.technicals.ma50DiffPct = +(((state.spyPrice - state.prevClose * 0.99) / state.prevClose) * 100).toFixed(1);
+      }
+
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const analysis = computeAnalysis();
+      state.checkLog.unshift({
+        trigger: `${state.symbol} · ${triggerLabel}`,
+        price: state.spyPrice,
+        signal: analysis.composite >= 0 ? 'Uptrend' : 'Downtrend',
+        time: nowStr
+      });
+      if (state.checkLog.length > 12) state.checkLog.pop();
+
+      state.sim.positions.forEach(pos => {
+        const curOpt = priceOption(state.spyPrice, pos.strike, pos.dte, Math.max(0.12, state.vix / 100), pos.type);
+        const val = +(curOpt.mark * 100 * pos.contracts).toFixed(2);
+        const pnl = +((pos.side === 'buy'
+          ? (curOpt.mark - pos.entryPrice)
+          : (pos.entryPrice - curOpt.mark)) * 100 * pos.contracts).toFixed(2);
+        pos.history.push({ time: nowStr, value: val, pnl });
+        if (pos.history.length > 30) pos.history.shift();
+      });
+
+      document.getElementById('lastCheckedDisplay').textContent = `Last checked: ${nowStr}`;
+      state.secondsRemaining = 300;
+      saveToStorage();
+      document.getElementById('countdownDisplay').textContent = formatTime(state.secondsRemaining);
+      renderAll();
+    }
+
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!state.autoCheck) return;
+        state.secondsRemaining -= 1;
+        if (state.secondsRemaining <= 0) {
+          runMarketCheck('Auto 5m');
+        } else {
+          document.getElementById('countdownDisplay').textContent = formatTime(state.secondsRemaining);
+        }
+      }, 1000);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showSimFeedback(msg, isError = false) {
+      const el = document.getElementById('simOrderFeedback');
+      el.textContent = msg;
+      el.className = `text-xs px-3 py-2 rounded-lg border ${
+        isError
+          ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+      }`;
+      el.classList.remove('hidden');
+    }
+
+    // --- Event Listeners ---
+    function filterSecurities(query) {
+      const q = String(query || '').trim().toLowerCase();
+      if (!q) return [];
+      return LEGIT_SECURITIES.filter(item =>
+        item.symbol.toLowerCase().includes(q) ||
+        item.name.toLowerCase().includes(q) ||
+        item.sector.toLowerCase().includes(q)
+      ).sort((a, b) => {
+        const aExact = a.symbol.toLowerCase() === q ? 0 : a.symbol.toLowerCase().startsWith(q) ? 1 : 2;
+        const bExact = b.symbol.toLowerCase() === q ? 0 : b.symbol.toLowerCase().startsWith(q) ? 1 : 2;
+        return aExact - bExact;
+      });
+    }
+
+    function renderSuggestions(query) {
+      const box = document.getElementById('symbolSuggestions');
+      const matches = filterSecurities(query).slice(0, 8);
+      if (matches.length === 0) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+      }
+      box.innerHTML = matches.map(m => `
+        <li data-pick-symbol="${m.symbol}" class="px-3.5 py-2.5 hover:bg-slate-800 cursor-pointer flex items-center justify-between gap-3 text-xs">
+          <div>
+            <span class="font-mono font-bold text-sky-400">${m.symbol}</span>
+            <span class="text-slate-200 ml-2">${escapeHtml(m.name)}</span>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 shrink-0">${m.type} · ${escapeHtml(m.sector)}</span>
+        </li>
+      `).join('');
+      box.classList.remove('hidden');
+    }
+
+    function loadSymbol(rawInput) {
+      const errEl = document.getElementById('symbolSearchError');
+      const box = document.getElementById('symbolSuggestions');
+      box.classList.add('hidden');
+
+      const cleaned = String(rawInput || '').trim();
+      if (!cleaned) return;
+
+      const upper = cleaned.toUpperCase();
+      let match = LEGIT_SECURITIES.find(s => s.symbol === upper);
+      if (!match) {
+        const filtered = filterSecurities(cleaned);
+        if (filtered.length > 0) match = filtered[0];
+      }
+
+      if (!match && !finnhubApiKey) {
+        errEl.textContent = `No matching legitimate stock or ETF found for "${cleaned}". Try typing part of a company name (e.g. Apple, Nvidia) or ticker (e.g. SPY, QQQ, TSLA).`;
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      errEl.classList.add('hidden');
+      const sym = match ? match.symbol : upper.replace(/[^A-Z0-9.]/g, '');
+      const entry = TICKER_CATALOG[sym];
+
+      if (entry) {
+        state.symbol = entry.symbol;
+        state.assetName = entry.name;
+        state.range52w = entry.range52w;
+        state.sourceName = entry.sourceName;
+        state.sourceUrl = entry.sourceUrl;
+        state.isGrounded = true;
+        state.spyPrice = entry.price;
+        state.prevClose = entry.prevClose;
+        state.vix = entry.vix;
+        state.greeks = { ...entry.greeks };
+        state.news = entry.news.map(n => ({ ...n }));
+      } else if (match) {
+        const price = match.estPrice;
+        const prevClose = +(price * 0.992).toFixed(2);
+        state.symbol = match.symbol;
+        state.assetName = `${match.name} (${match.type})`;
+        state.range52w = `$${(price * 0.78).toFixed(2)}–$${(price * 1.15).toFixed(2)}`;
+        state.sourceName = 'Modeled Baseline';
+        state.sourceUrl = '';
+        state.isGrounded = false;
+        state.spyPrice = price;
+        state.prevClose = prevClose;
+        state.vix = match.estVix;
+        state.greeks = { delta: 0.56, gamma: 0.038, theta: -0.15, vega: 0.24 };
+        state.news = [
+          {
+            id: nextNewsId++,
+            title: `${match.name} (${match.symbol}) loaded in modeled mode — add headlines below or connect a Finnhub key for live news`,
+            sentiment: 'neutral',
+            weight: 0,
+            source: 'Modeled Baseline',
+            url: ''
+          }
+        ];
+      }
+
+      // Sync Greeks sliders to newly loaded symbol
+      document.getElementById('deltaSlider').value = state.greeks.delta;
+      document.getElementById('gammaSlider').value = state.greeks.gamma;
+      document.getElementById('thetaSlider').value = state.greeks.theta;
+      document.getElementById('vegaSlider').value = state.greeks.vega;
+      document.getElementById('deltaVal').textContent = state.greeks.delta.toFixed(2);
+      document.getElementById('gammaVal').textContent = state.greeks.gamma.toFixed(3);
+      document.getElementById('thetaVal').textContent = state.greeks.theta.toFixed(2);
+      document.getElementById('vegaVal').textContent = state.greeks.vega.toFixed(2);
+
+      const strikes = getStrikeList();
+      state.sim.strike = strikes[Math.floor(strikes.length / 2)];
+      document.getElementById('symbolSearchInput').value = state.symbol;
+      runMarketCheck('Symbol Load');
+      renderSimulator(true);
+    }
+
+    function bindControls() {
+      const searchInput = document.getElementById('symbolSearchInput');
+      const suggestionsBox = document.getElementById('symbolSuggestions');
+
+      searchInput.addEventListener('input', e => {
+        document.getElementById('symbolSearchError').classList.add('hidden');
+        renderSuggestions(e.target.value);
+      });
+
+      searchInput.addEventListener('focus', e => {
+        if (e.target.value.trim()) renderSuggestions(e.target.value);
+      });
+
+      suggestionsBox.addEventListener('click', e => {
+        const li = e.target.closest('[data-pick-symbol]');
+        if (!li) return;
+        const sym = li.getAttribute('data-pick-symbol');
+        loadSymbol(sym);
+      });
+
+      document.addEventListener('click', e => {
+        if (!e.target.closest('#symbolSearchForm')) {
+          suggestionsBox.classList.add('hidden');
+        }
+      });
+
+      document.getElementById('symbolSearchForm').addEventListener('submit', e => {
+        e.preventDefault();
+        loadSymbol(searchInput.value);
+      });
+
+      document.querySelectorAll('[data-quick-symbol]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          loadSymbol(btn.getAttribute('data-quick-symbol'));
+        });
+      });
+      // Tab switching
+      const tabAnalyzerBtn = document.getElementById('tabAnalyzerBtn');
+      const tabSimulatorBtn = document.getElementById('tabSimulatorBtn');
+      const analyzerView = document.getElementById('analyzerView');
+      const simulatorView = document.getElementById('simulatorView');
+
+      tabAnalyzerBtn.addEventListener('click', () => {
+        state.activeTab = 'analyzer';
+        analyzerView.classList.remove('hidden');
+        simulatorView.classList.add('hidden');
+        tabAnalyzerBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-slate-950 transition cursor-pointer';
+        tabSimulatorBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition cursor-pointer';
+        if (trendChart) trendChart.resize();
+      });
+
+      tabSimulatorBtn.addEventListener('click', () => {
+        state.activeTab = 'simulator';
+        simulatorView.classList.remove('hidden');
+        analyzerView.classList.add('hidden');
+        tabSimulatorBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-slate-950 transition cursor-pointer';
+        tabAnalyzerBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition cursor-pointer';
+        renderSimulator(true);
+        if (payoffChart) payoffChart.resize();
+      });
+
+      // Greeks sliders
+      const deltaSlider = document.getElementById('deltaSlider');
+      const gammaSlider = document.getElementById('gammaSlider');
+      const thetaSlider = document.getElementById('thetaSlider');
+      const vegaSlider = document.getElementById('vegaSlider');
+
+      deltaSlider.addEventListener('input', e => {
+        state.greeks.delta = parseFloat(e.target.value);
+        document.getElementById('deltaVal').textContent = state.greeks.delta.toFixed(2);
+        renderAll();
+      });
+      gammaSlider.addEventListener('input', e => {
+        state.greeks.gamma = parseFloat(e.target.value);
+        document.getElementById('gammaVal').textContent = state.greeks.gamma.toFixed(3);
+        renderAll();
+      });
+      thetaSlider.addEventListener('input', e => {
+        state.greeks.theta = parseFloat(e.target.value);
+        document.getElementById('thetaVal').textContent = state.greeks.theta.toFixed(2);
+        renderAll();
+      });
+      vegaSlider.addEventListener('input', e => {
+        state.greeks.vega = parseFloat(e.target.value);
+        document.getElementById('vegaVal').textContent = state.greeks.vega.toFixed(2);
+        renderAll();
+      });
+
+      document.getElementById('resetGreeksBtn').addEventListener('click', () => {
+        state.greeks = { delta: 0.58, gamma: 0.035, theta: -0.14, vega: 0.22 };
+        deltaSlider.value = '0.58';
+        gammaSlider.value = '0.035';
+        thetaSlider.value = '-0.14';
+        vegaSlider.value = '0.22';
+        document.getElementById('deltaVal').textContent = '0.58';
+        document.getElementById('gammaVal').textContent = '0.035';
+        document.getElementById('thetaVal').textContent = '-0.14';
+        document.getElementById('vegaVal').textContent = '0.22';
+        renderAll();
+      });
+
+      document.getElementById('autoCheckToggle').addEventListener('change', e => {
+        state.autoCheck = e.target.checked;
+      });
+
+      document.getElementById('checkNowBtn').addEventListener('click', () => {
+        runMarketCheck('Manual Check');
+      });
+
+      document.getElementById('addNewsForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const titleInput = document.getElementById('newsHeadlineInput');
+        const sentimentInput = document.getElementById('newsSentimentInput');
+        const weightInput = document.getElementById('newsWeightInput');
+        const title = titleInput.value.trim();
+        if (!title) return;
+
+        state.news.unshift({
+          id: nextNewsId++,
+          title,
+          sentiment: sentimentInput.value,
+          weight: parseInt(weightInput.value, 10),
+          source: 'User Event',
+          url: ''
+        });
+        titleInput.value = '';
+        renderAll();
+      });
+
+      document.getElementById('entryExitGrid').addEventListener('click', e => {
+        const btn = e.target.closest('[data-load-setup]');
+        if (!btn) return;
+        const optType = btn.getAttribute('data-load-setup');
+        const dte = parseInt(btn.getAttribute('data-setup-dte'), 10);
+        state.sim.strategy = 'single';
+        state.sim.side = 'buy';
+        state.sim.type = optType;
+        state.sim.dte = dte;
+        document.getElementById('simStrategySelect').value = 'single';
+        document.getElementById('simExpirySelect').value = String(dte);
+
+        const strikes = getStrikeList();
+        state.sim.strike = strikes[Math.floor(strikes.length / 2)];
+        document.getElementById('tabSimulatorBtn').click();
+      });
+
+      document.getElementById('newsList').addEventListener('click', e => {
+        const btn = e.target.closest('[data-remove-news]');
+        if (!btn) return;
+        const id = parseInt(btn.getAttribute('data-remove-news'), 10);
+        state.news = state.news.filter(n => n.id !== id);
+        renderAll();
+      });
+
+      // Simulator controls
+      const simBuyBtn = document.getElementById('simBuyBtn');
+      const simSellBtn = document.getElementById('simSellBtn');
+      const simCallBtn = document.getElementById('simCallBtn');
+      const simPutBtn = document.getElementById('simPutBtn');
+
+      simBuyBtn.addEventListener('click', () => {
+        state.sim.side = 'buy';
+        simBuyBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold bg-emerald-500 text-slate-950 transition cursor-pointer';
+        simSellBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition cursor-pointer';
+        renderSimulator();
+      });
+
+      simSellBtn.addEventListener('click', () => {
+        state.sim.side = 'sell';
+        simSellBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold bg-rose-500 text-white transition cursor-pointer';
+        simBuyBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition cursor-pointer';
+        renderSimulator();
+      });
+
+      simCallBtn.addEventListener('click', () => {
+        state.sim.type = 'call';
+        simCallBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold bg-sky-500 text-slate-950 transition cursor-pointer';
+        simPutBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition cursor-pointer';
+        renderSimulator(true);
+      });
+
+      simPutBtn.addEventListener('click', () => {
+        state.sim.type = 'put';
+        simPutBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold bg-sky-500 text-slate-950 transition cursor-pointer';
+        simCallBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition cursor-pointer';
+        renderSimulator(true);
+      });
+
+      document.getElementById('simStrategySelect').addEventListener('change', e => {
+        state.sim.strategy = e.target.value;
+        renderSimulator();
+      });
+
+      document.getElementById('simExpirySelect').addEventListener('change', e => {
+        state.sim.dte = parseInt(e.target.value, 10);
+        renderSimulator(true);
+      });
+
+      document.getElementById('optionChainBody').addEventListener('click', e => {
+        const row = e.target.closest('[data-strike]');
+        if (!row) return;
+        state.sim.strike = parseInt(row.getAttribute('data-strike'), 10);
+        renderSimulator(true);
+      });
+
+      document.getElementById('simOrderType').addEventListener('change', e => {
+        state.sim.orderType = e.target.value;
+        document.getElementById('limitPriceRow').classList.toggle('hidden', state.sim.orderType === 'market');
+        renderSimulator();
+      });
+
+      document.getElementById('simContractsInput').addEventListener('input', e => {
+        state.sim.contracts = Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1));
+        renderSimulator();
+      });
+
+      document.getElementById('simLimitPriceInput').addEventListener('input', e => {
+        state.sim.limitPrice = Math.max(0.01, parseFloat(e.target.value) || 0.01);
+        renderSimulator();
+      });
+
+      document.getElementById('simOrderForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const { side, type, dte, strike, contracts, orderType } = state.sim;
+        const baseIV = Math.max(0.12, state.vix / 100);
+        const skew = ((state.spyPrice - strike) / state.spyPrice) * 0.12;
+        const opt = priceOption(state.spyPrice, strike, dte, Math.max(0.10, baseIV + skew), type);
+        const fillPrice = orderType === 'market' ? opt.mark : Math.max(0.01, state.sim.limitPrice || opt.mark);
+
+        const required = side === 'buy'
+          ? fillPrice * 100 * contracts
+          : (type === 'put' ? strike : state.spyPrice) * 100 * contracts;
+
+        if (required > state.sim.buyingPower) {
+          showSimFeedback(`Insufficient paper buying power ($${required.toFixed(2)} required).`, true);
+          return;
+        }
+
+        if (side === 'buy') {
+          state.sim.buyingPower -= required;
+        } else {
+          state.sim.buyingPower -= (required - fillPrice * 100 * contracts);
+        }
+
+        const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const newId = nextPosId++;
+        state.sim.positions.unshift({
+          id: newId,
+          symbol: state.symbol,
+          side,
+          type,
+          strike,
+          dte,
+          contracts,
+          entryPrice: fillPrice,
+          collateral: side === 'sell' ? required : 0,
+          history: [{ time: nowStr, value: +(fillPrice * 100 * contracts).toFixed(2), pnl: 0 }]
+        });
+        state.sim.selectedPosId = newId;
+
+        saveToStorage();
+        showSimFeedback(`Filled: ${side.toUpperCase()} ${contracts}x ${state.symbol} $${strike} ${type.toUpperCase()} @ $${fillPrice.toFixed(2)}.`);
+        renderSimulator();
+      });
+
+      document.getElementById('simPositionsList').addEventListener('click', e => {
+        const closeBtn = e.target.closest('[data-close-pos]');
+        if (closeBtn) {
+          const id = parseInt(closeBtn.getAttribute('data-close-pos'), 10);
+          const idx = state.sim.positions.findIndex(p => p.id === id);
+          if (idx === -1) return;
+
+          const pos = state.sim.positions[idx];
+          const curOpt = priceOption(state.spyPrice, pos.strike, pos.dte, Math.max(0.12, state.vix / 100), pos.type);
+          if (pos.side === 'buy') {
+            state.sim.buyingPower += curOpt.mark * 100 * pos.contracts;
+          } else {
+            state.sim.buyingPower += pos.collateral - curOpt.mark * 100 * pos.contracts;
+          }
+          state.sim.positions.splice(idx, 1);
+          if (state.sim.selectedPosId === id) {
+            state.sim.selectedPosId = state.sim.positions[0] ? state.sim.positions[0].id : null;
+          }
+          saveToStorage();
+          showSimFeedback(`Closed ${pos.contracts}x ${pos.symbol || 'SPY'} $${pos.strike} ${pos.type.toUpperCase()} @ $${curOpt.mark.toFixed(2)}.`);
+          renderSimulator();
+          return;
+        }
+
+        const row = e.target.closest('[data-select-pos]');
+        if (row) {
+          state.sim.selectedPosId = parseInt(row.getAttribute('data-select-pos'), 10);
+          renderSimulator();
+        }
+      });
+
+      document.getElementById('resetPaperBtn').addEventListener('click', () => {
+        state.sim.buyingPower = 25000;
+        state.sim.positions = [];
+        state.sim.selectedPosId = null;
+        saveToStorage();
+        document.getElementById('simOrderFeedback').classList.add('hidden');
+        renderSimulator();
+      });
+    }
+
+    // Step 2 bindings: Live API panel + Auto-sentiment headline listener
+    document.getElementById('toggleApiPanelBtn').addEventListener('click', () => {
+      document.getElementById('liveApiPanel').classList.toggle('hidden');
+    });
+
+    document.getElementById('apiKeyForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const key = document.getElementById('finnhubKeyInput').value.trim();
+      if (!key) return;
+      finnhubApiKey = key;
+      updateLiveBadge();
+      saveToStorage();
+      await fetchLiveSymbolData(state.symbol);
+      renderAll();
+    });
+
+    document.getElementById('clearApiKeyBtn').addEventListener('click', () => {
+      finnhubApiKey = '';
+      document.getElementById('finnhubKeyInput').value = '';
+      updateLiveBadge();
+      saveToStorage();
+      showApiStatus('Disconnected. Switched back to Demo / Snapshot Mode.');
+    });
+
+    document.getElementById('newsHeadlineInput').addEventListener('input', e => {
+      const txt = e.target.value.trim();
+      const hint = document.getElementById('autoSentimentHint');
+      if (!txt) {
+        hint.textContent = 'Type a headline to auto-score';
+        return;
+      }
+      const scored = autoScoreHeadline(txt);
+      document.getElementById('newsSentimentInput').value = scored.sentiment;
+      document.getElementById('newsWeightInput').value = String(scored.weight);
+      hint.textContent = `Auto-detected: ${scored.sentiment.toUpperCase()} (Impact ${scored.weight})`;
+    });
+
+    // Initialize on load
+    loadFromStorage();
+    if (finnhubApiKey) {
+      document.getElementById('finnhubKeyInput').value = finnhubApiKey;
+    }
+    updateLiveBadge();
+    bindControls();
+    runMarketCheck('Initial Load');
+    startTimer();
+    // Register Service Worker for Android / Chrome PWA installation
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
